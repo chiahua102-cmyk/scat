@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小貓冒險：抉擇之路</title>
+  
+  <!-- 載入 React 與 ReactDOM 核心庫 -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- 載入 Babel 用於在瀏覽器中即時解析 JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- 載入 Tailwind CSS 用於精美排版 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          keyframes: {
+            shake: {
+              '0%, 100%': { transform: 'translateX(0)' },
+              '10%, 30%, 50%, 70%, 90%': { transform: 'translateX(-5px)' },
+              '20%, 40%, 60%, 80%': { transform: 'translateX(5px)' },
+            },
+            pulseGold: {
+              '0%, 100%': { opacity: 0 },
+              '50%': { opacity: 0.5 },
+            }
+          },
+          animation: {
+            shake: 'shake 0.4s cubic-bezier(.36,.07,.19,.97) both',
+            pulseGold: 'pulseGold 1s ease-in-out',
+            fadeIn: 'fadeIn 0.5s ease-out forwards',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* 自訂捲軸樣式 */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+    
+    /* 動畫效果 */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fadeIn {
+      animation: fadeIn 0.5s ease-out forwards;
+    }
+  </style>
+</head>
+<!-- 加入背景圖片（使用上傳的雙副檔名檔名 背景.png.png） -->
+<body class="flex items-center justify-center min-h-screen p-4 font-sans selection:bg-amber-200 bg-slate-900" 
+      style="background-image: url('背景.png.png'); background-size: cover; background-position: center; background-attachment: fixed; background-repeat: no-repeat;">
+  <div id="root" class="w-full max-w-4xl"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 劇本資料 ---
+    const chapters = {
+      1: {
+        title: "第一章：雨夜的開端",
+        image: "🌧️",
+        dialogue: { speaker: "內心的聲音", text: "好冷...肚子好餓...我必須找到避雨的地方，或者一點吃的。" },
+        story: "這是一個傾盆大雨的夜晚。你是一隻才幾個月大的橘色小流浪貓，渾身濕透，躲在一個漏水的紙箱裡。前方的街道車水馬龍，而旁邊則是一條漆黑的死巷。",
+        choices: [
+          { text: "冒險穿過車水馬龍的大馬路", nextNode: 2, damage: 1, reason: "一輛機車呼嘯而過，濺了你一身泥水，你嚇得跌了一跤，磨破了皮。" },
+          { text: "閃入狹窄漆黑的死巷（進入翻找食物小遊戲）", startMiniGame: "trash" }
+        ]
+      },
+      2: {
+        title: "第二章：街頭的試煉",
+        image: "🐕",
+        dialogue: { speaker: "流浪狗", text: "汪！汪汪！這裡是我的地盤，小傢伙快滾！" },
+        story: "好不容易熬過了雨夜，第二天清晨，你在巷口遇到了一隻凶狠的流浪狗。他呲牙裂嘴地瞪著你，隨時準備撲上來。旁邊有一排堆高的廢棄木箱，還有一隻老鼠剛好溜過去。",
+        choices: [
+          { text: "轉身就跑（消耗體力逃跑）", nextNode: 3, damage: 1, reason: "你拚命狂奔，雖然逃脫了，但耗盡了體力，感到一陣暈眩。" },
+          { text: "跳上木箱，轉移注意力去抓老鼠（進入抓老鼠小遊戲）", startMiniGame: "mice" }
+        ]
+      },
+      3: {
+        title: "第三章：迷失與飢餓",
+        image: "😿",
+        dialogue: { speaker: "內心的聲音", text: "走不動了...這個世界對小貓來說太危險了..." },
+        story: "你已經一整天沒有吃東西了。腳步越來越沉重，你癱倒在一家亮著溫暖黃光的咖啡廳後門。門前有一排積水的石階，突然，門開了，一個女孩走了出來。",
+        choices: [
+          { text: "發出微弱的喵喵聲求救", nextNode: 4, heal: 1, reason: "女孩溫柔地抱起你，餵了你一些溫牛奶，你感覺好多了。" },
+          { text: "踩著乾爽的石階偷偷靠近（進入貓步記憶小遊戲）", startMiniGame: "memory" }
+        ]
+      },
+      4: {
+        title: "第四章：命運的相遇",
+        image: "👩",
+        dialogue: { speaker: "莉莉 (咖啡廳老闆)", text: "哎呀，可憐的小傢伙，你怎麼一個人在這裡？跟我進來吧，外面太冷了。" },
+        story: "女孩名叫莉莉，是這家「貓咪與書」咖啡廳的老闆。她把你帶進室內，用溫暖的毛巾幫廣擦乾身體。你注意到地板上滾著一顆鮮紅色的毛線球。",
+        choices: [
+          { text: "溫順地讓她擦拭，並發出呼嚕聲", nextNode: 5, heal: 1, reason: "你的呼嚕聲讓莉莉很開心，她額外給了你一塊肉泥！" },
+          { text: "看到毛線球，忍不住撲上去狂抓！（進入瘋狂毛線小遊戲）", startMiniGame: "yarn" }
+        ]
+      },
+      5: {
+        title: "第五章：溫暖的避風港",
+        image: "☕",
+        dialogue: { speaker: "莉莉", text: "你就先待在這邊的軟毯子上休息喔，我轉身去準備開店。" },
+        story: "莉莉把你安頓在櫃台後方的一個柔軟坐墊上。這時你注意到，剛烤好出爐的頂級香酥魚乾就放在稍微移動的冷卻架上，香氣撲鼻而來！",
+        choices: [
+          { text: "乖乖待在毯子上休息", nextNode: 6, heal: 1, reason: "你決定當個乖寶寶，好好的睡了一覺，恢復了精神。" },
+          { text: "趁莉莉不注意，偷撈幾條魚乾（進入偷魚乾小遊戲）", startMiniGame: "fish" }
+        ]
+      },
+      6: {
+        title: "第六章：抉擇",
+        image: "🏠",
+        dialogue: { speaker: "莉莉", text: "你真的很討人喜歡呢。如果你願意，這裡永遠是你的家。" },
+        story: "幾天後，你已經完全適應了咖啡廳的生活。你可以每天吃飽喝足，但同時你也望著窗外，看著那些在屋頂上自由跳躍的野貓。現在，是時候做出決定了。",
+        choices: [
+          { text: "留下來，成為咖啡廳的店貓", nextNode: "victory_home" },
+          { text: "趁門打開時溜出去，回歸自由的街頭", nextNode: "victory_wild" }
+        ]
+      }
+    };
+
+    // --- 打字機特效元件 ---
+    const TypewriterText = ({ text, speed = 30, onComplete }) => {
+      const [displayedText, setDisplayedText] = useState("");
+      
+      useEffect(() => {
+        setDisplayedText("");
+        let i = 0;
+        const timer = setInterval(() => {
+          if (i < text.length) {
+            setDisplayedText((prev) => prev + text.charAt(i));
+            i++;
+          } else {
+            clearInterval(timer);
+            if (onComplete) onComplete();
+          }
+        }, speed);
+        return () => clearInterval(timer);
+      }, [text, speed, onComplete]);
+
+      return <span>{displayedText}</span>;
+    };
+
+    // --- 主程式 ---
+    const App = () => {
+      // 系統與狀態
+      const [currentNode, setCurrentNode] = useState(1);
+      const [lives, setLives] = useState(3);
+      const [gameMode, setGameMode] = useState('story'); 
+      const [consequence, setConsequence] = useState({ text: "", nextNode: null });
+      
+      const [shaking, setShaking] = useState(false);
+      const [flashEffect, setFlashEffect] = useState(null); 
+      const [typingComplete, setTypingComplete] = useState(false);
+
+      const maxLives = 5;
+
+      // 音樂相關狀態
+      const audioRef = useRef(null);
+      const [isPlaying, setIsPlaying] = useState(false);
+
+      // 小遊戲 1: 抓老鼠狀態
+      const [micePositions, setMicePositions] = useState([]);
+      const [miceScore, setMiceScore] = useState(0);
+      const [miceTimeLeft, setMiceTimeLeft] = useState(10);
+      
+      // 小遊戲 2: 翻垃圾桶狀態
+      const [trashGrid, setTrashGrid] = useState([]);
+      const [scavengeScore, setScavengeScore] = useState(0);
+
+      // 小遊戲 3: 偷魚乾狀態
+      const [pointerPos, setPointerPos] = useState(0);
+      const [pointerDirection, setPointerDirection] = useState(1);
+      const [fishScore, setFishScore] = useState(0);
+      const [fishAttempts, setFishAttempts] = useState(5);
+      const fishTarget = 3;
+
+      // 小遊戲 4: 貓步記憶狀態
+      const [memorySequence, setMemorySequence] = useState([]);
+      const [playerSequence, setPlayerSequence] = useState([]);
+      const [memoryState, setMemoryState] = useState('showing'); // showing, playing
+      const [activePad, setActivePad] = useState(null);
+
+      // 小遊戲 5: 瘋狂毛線狀態
+      const [yarnClicks, setYarnClicks] = useState(0);
+      const [yarnTimeLeft, setYarnTimeLeft] = useState(5);
+      const [yarnTransform, setYarnTransform] = useState({ rotate: 0, scale: 1 });
+
+      // 處理音樂播放與互動
+      useEffect(() => {
+        // 當使用者第一次點擊畫面時，自動播放音樂
+        const handleFirstInteraction = () => {
+          if (audioRef.current && !isPlaying) {
+            audioRef.current.play().then(() => {
+              setIsPlaying(true);
+            }).catch(e => console.log("音樂自動播放被瀏覽器阻擋，需要玩家點擊互動"));
+            document.removeEventListener('click', handleFirstInteraction);
+          }
+        };
+        document.addEventListener('click', handleFirstInteraction);
+        return () => document.removeEventListener('click', handleFirstInteraction);
+      }, [isPlaying]);
+
+      const toggleAudio = () => {
+        if (audioRef.current) {
+          if (isPlaying) {
+            audioRef.current.pause();
+          } else {
+            audioRef.current.play().catch(e => console.log("無法播放音樂", e));
+          }
+          setIsPlaying(!isPlaying);
+        }
+      };
+
+      // 觸發畫面震動
+      const triggerShake = () => {
+        setShaking(true);
+        setTimeout(() => setShaking(false), 400);
+      };
+
+      // 修改生命值
+      const modifyLives = (amount) => {
+        let newLives = lives + amount;
+        if (newLives > maxLives) newLives = maxLives;
+        
+        if (amount < 0) {
+          triggerShake();
+          setFlashEffect('damage');
+        } else if (amount > 0) {
+          setFlashEffect('heal');
+        }
+        
+        setTimeout(() => setFlashEffect(null), 500);
+        setLives(newLives);
+        return newLives;
+      };
+
+      // 處理選項點擊
+      const handleChoice = (choice) => {
+        if (!typingComplete) return;
+
+        let finalLives = lives;
+        let consequenceMsg = "";
+
+        if (choice.damage) {
+          consequenceMsg += `💔 糟糕！${choice.reason} (生命 -${choice.damage})\n`;
+          finalLives = modifyLives(-choice.damage);
+        }
+        if (choice.heal) {
+          consequenceMsg += `✨ 太棒了！${choice.reason} (生命 +${choice.heal})\n`;
+          finalLives = modifyLives(choice.heal);
+        }
+
+        if (finalLives <= 0) {
+          setCurrentNode('gameover');
+          setGameMode('story');
+          return;
+        }
+
+        // 觸發小遊戲
+        if (choice.startMiniGame === 'mice') { startMiceGame(); return; }
+        if (choice.startMiniGame === 'trash') { startTrashGame(); return; }
+        if (choice.startMiniGame === 'fish') { startFishGame(); return; }
+        if (choice.startMiniGame === 'memory') { startMemoryGame(); return; }
+        if (choice.startMiniGame === 'yarn') { startYarnGame(); return; }
+
+        if (consequenceMsg) {
+          setConsequence({ text: consequenceMsg, nextNode: choice.nextNode });
+          setGameMode('consequence');
+        } else if (choice.nextNode) {
+          if (choice.nextNode.toString().startsWith('victory')) {
+            setCurrentNode(choice.nextNode);
+            setGameMode('story');
+          } else {
+            setCurrentNode(choice.nextNode);
+            setTypingComplete(false);
+          }
+        }
+      };
+
+      // -----------------------------------------------------------------
+      // 小遊戲 4：貓步記憶邏輯
+      // -----------------------------------------------------------------
+      const startMemoryGame = () => {
+        const seq = Array.from({length: 4}, () => Math.floor(Math.random() * 4));
+        setMemorySequence(seq);
+        setPlayerSequence([]);
+        setMemoryState('showing');
+        setGameMode('minigame_memory');
+      };
+
+      useEffect(() => {
+        if (gameMode === 'minigame_memory' && memoryState === 'showing') {
+          let i = 0;
+          const interval = setInterval(() => {
+            if (i < memorySequence.length) {
+              setActivePad(memorySequence[i]);
+              setTimeout(() => setActivePad(null), 400);
+              i++;
+            } else {
+              clearInterval(interval);
+              setMemoryState('playing'); 
+            }
+          }, 800); 
+          return () => clearInterval(interval);
+        }
+      }, [gameMode, memoryState, memorySequence]);
+
+      const handleMemoryClick = (index) => {
+        if (memoryState !== 'playing') return;
+        
+        const newPlayerSeq = [...playerSequence, index];
+        setPlayerSequence(newPlayerSeq);
+
+        if (index !== memorySequence[newPlayerSeq.length - 1]) {
+          setMemoryState('showing'); 
+          setTimeout(() => {
+            const finalLives = modifyLives(-1);
+            if (finalLives <= 0) {
+              setCurrentNode('gameover');
+              setGameMode('story');
+            } else {
+              setConsequence({ 
+                text: "❌ 哎呀！你踩到了積水的石階，滑了一跤發出巨響！莉莉雖然心疼地把你抱起來，但你嚇得夠嗆。（生命 -1）", 
+                nextNode: 4 
+              });
+              setGameMode('consequence');
+            }
+          }, 500);
+        } else if (newPlayerSeq.length === memorySequence.length) {
+          setMemoryState('showing'); 
+          setTimeout(() => {
+            modifyLives(1);
+            setConsequence({ 
+              text: "🐱 完美！你悄無聲息地沿著安全的石階靠近，展現了貓科動物優雅的步伐，心情大好！（生命 +1）", 
+              nextNode: 4 
+            });
+            setGameMode('consequence');
+          }, 500);
+        }
+      };
+
+      // -----------------------------------------------------------------
+      // 小遊戲 5：瘋狂毛線邏輯
+      // -----------------------------------------------------------------
+      const startYarnGame = () => {
+        setYarnClicks(0);
+        setYarnTimeLeft(5);
+        setGameMode('minigame_yarn');
+      };
+
+      useEffect(() => {
+        if (gameMode === 'minigame_yarn' && yarnTimeLeft > 0) {
+          const timer = setInterval(() => setYarnTimeLeft(t => t - 1), 1000);
+          return () => clearInterval(timer);
+        } else if (gameMode === 'minigame_yarn' && yarnTimeLeft === 0) {
+          if (yarnClicks >= 25) {
+            modifyLives(1);
+            setConsequence({ 
+              text: "🧶 太爽了！你化身無影爪，把毛線球抓得稀巴爛！流浪累積的壓力瞬間釋放，精神百倍！（生命 +1）", 
+              nextNode: 5 
+            });
+          } else {
+            setConsequence({ 
+              text: "🧶 呼...毛線球比想像中堅固，你玩累了，不過伸展一下筋骨也挺開心的。", 
+              nextNode: 5 
+            });
+          }
+          setGameMode('consequence');
+        }
+      }, [gameMode, yarnTimeLeft, yarnClicks]);
+
+      const handleYarnClick = () => {
+        if (yarnTimeLeft > 0) {
+          setYarnClicks(c => c + 1);
+          setYarnTransform({
+            rotate: Math.random() * 360,
+            scale: 1 + Math.random() * 0.3
+          });
+        }
+      };
+
+      // -----------------------------------------------------------------
+      // 小遊戲 1~3 的邏輯
+      // -----------------------------------------------------------------
+      const startMiceGame = () => { setMiceScore(0); setMiceTimeLeft(10); spawnMice(); setGameMode('minigame_mice'); };
+      const spawnMice = () => { setMicePositions(Array.from({ length: 5 }).map((_, i) => ({ id: i, x: Math.random() * 80 + 10, y: Math.random() * 60 + 20, active: true }))); };
+      useEffect(() => {
+        if (gameMode === 'minigame_mice' && miceTimeLeft > 0) { const timer = setInterval(() => setMiceTimeLeft(t => t - 1), 1000); return () => clearInterval(timer); } 
+        else if (gameMode === 'minigame_mice' && miceTimeLeft === 0) {
+          if (miceScore >= 3) { modifyLives(1); setConsequence({ text: "🐱 成功！你身手矯健地抓到了足夠的老鼠，飽餐一頓，還成功威嚇了流浪狗！（生命 +1）", nextNode: 3 }); } 
+          else {
+            const finalLives = modifyLives(-1);
+            if (finalLives <= 0) { setCurrentNode('gameover'); setGameMode('story'); return; }
+            setConsequence({ text: "❌ 失敗！老鼠跑得太快了，你不僅沒吃到東西，還被流浪狗嘲笑並咬了一口。（生命 -1）", nextNode: 3 });
+          }
+          setGameMode('consequence');
+        }
+      }, [gameMode, miceTimeLeft]);
+      const catchMouse = (id) => { setMicePositions(prev => prev.map(m => m.id === id ? { ...m, active: false } : m)); setMiceScore(s => s + 1); };
+
+      const startTrashGame = () => {
+        const pool = ['food', 'food', 'food', 'trap', 'empty', 'empty', 'empty', 'empty', 'empty'];
+        setTrashGrid(pool.sort(() => Math.random() - 0.5).map((type, id) => ({ id, type, isOpened: false })));
+        setScavengeScore(0); setGameMode('minigame_trash');
+      };
+      const handleTrashClick = (id) => {
+        if (trashGrid.find(g => g.id === id).isOpened) return;
+        const newGrid = trashGrid.map(item => item.id === id ? { ...item, isOpened: true } : item);
+        setTrashGrid(newGrid);
+        const clickedItem = trashGrid.find(g => g.id === id);
+        if (clickedItem.type === 'food') {
+          const newScore = scavengeScore + 1; setScavengeScore(newScore);
+          if (newScore === 3) {
+            setTimeout(() => { modifyLives(1); setConsequence({ text: "🐱 哇！你找出了所有隱藏的美味香腸，飽餐一頓，感覺渾身充滿力量！（生命 +1）", nextNode: 2 }); setGameMode('consequence'); }, 600);
+          }
+        } else if (clickedItem.type === 'trap') {
+          setTimeout(() => {
+            const finalLives = modifyLives(-1);
+            if (finalLives <= 0) { setCurrentNode('gameover'); setGameMode('story'); } 
+            else { setConsequence({ text: "💥 哎呀！垃圾堆裡藏著捕鼠夾！你剛伸出貓掌就被狠狠夾了一下。（生命 -1）", nextNode: 2 }); setGameMode('consequence'); }
+          }, 600);
+        }
+      };
+
+      const startFishGame = () => { setFishScore(0); setFishAttempts(5); setPointerPos(0); setPointerDirection(1); setGameMode('minigame_fish'); };
+      useEffect(() => {
+        if (gameMode !== 'minigame_fish') return;
+        if (fishScore >= fishTarget) { setTimeout(() => { modifyLives(1); setConsequence({ text: "🐱 成功撈走香酥魚乾！吃完後你滿足地舔舔爪子，體力大增！（生命 +1）", nextNode: 6 }); setGameMode('consequence'); }, 500); return; }
+        if (fishAttempts <= 0) { setTimeout(() => { const finalLives = modifyLives(-1); if (finalLives <= 0) { setCurrentNode('gameover'); setGameMode('story'); } else { setConsequence({ text: "❌ 哎呀！你碰倒了馬克杯發出響聲，莉莉拍了拍你的屁股，嚇得你不輕。（生命 -1）", nextNode: 6 }); setGameMode('consequence'); } }, 500); return; }
+        const interval = setInterval(() => { setPointerPos(prev => { let next = prev + pointerDirection * 3.5; if (next >= 100) { setPointerDirection(-1); return 100; } if (next <= 0) { setPointerDirection(1); return 0; } return next; }); }, 20);
+        return () => clearInterval(interval);
+      }, [gameMode, pointerPos, pointerDirection, fishScore, fishAttempts]);
+      const handleFishTap = () => { if (pointerPos >= 40 && pointerPos <= 60) { setFishScore(prev => prev + 1); } else { triggerShake(); setFishAttempts(prev => prev - 1); } };
+
+      // -----------------------------------------------------------------
+      // 畫面渲染邏輯
+      // -----------------------------------------------------------------
+      const renderContent = () => {
+        if (currentNode === 'gameover') {
+          return (
+            <div className="flex flex-col items-center justify-center h-full text-center p-6 animate-fadeIn">
+              <div className="text-6xl mb-4">👻</div>
+              <h1 className="text-3xl font-bold text-slate-800 mb-4">冒險結束</h1>
+              <p className="text-slate-600 mb-8">小貓耗盡了所有的體力，在這個殘酷的街頭倒下了...但也許，還有重來一次的機會？</p>
+              <button onClick={() => { setLives(3); setCurrentNode(1); setGameMode('story'); setTypingComplete(false); }} className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg transition-colors">
+                重新開始冒險
+              </button>
+            </div>
+          );
+        }
+
+        if (currentNode === 'victory_home' || currentNode === 'victory_wild') {
+          const isHome = currentNode === 'victory_home';
+          return (
+            <div className="flex flex-col items-center justify-center h-full text-center p-6 animate-fadeIn">
+              <div className="text-6xl mb-4">{isHome ? '🐈' : '🦁'}</div>
+              <h1 className="text-3xl font-bold text-amber-600 mb-4">{isHome ? '溫暖的歸宿' : '街頭的霸主'}</h1>
+              <p className="text-slate-700 mb-8 leading-relaxed">
+                {isHome ? "你成為了「貓咪與書」最受歡迎的店貓，每天都有吃不完的魚乾，過著幸福無比的生活。" : "你憑藉著智慧與敏捷，成為了這個街區的貓咪老大。整個城市，都是你的遊樂場。"}
+              </p>
+              <button onClick={() => { setLives(3); setCurrentNode(1); setGameMode('story'); setTypingComplete(false); }} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl shadow-lg transition-colors">
+                體驗另一種貓生
+              </button>
+            </div>
+          );
+        }
+
+        if (gameMode === 'consequence') {
+          return (
+            <div className="flex flex-col items-center justify-center h-full text-center p-6 animate-fadeIn">
+              <div className="text-xl md:text-2xl mb-8 p-6 bg-white/60 rounded-2xl border border-slate-200 shadow-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
+                {consequence.text}
+              </div>
+              <button onClick={() => { if (consequence.nextNode.toString().startsWith('victory')) { setCurrentNode(consequence.nextNode); setGameMode('story'); } else { setCurrentNode(consequence.nextNode); setGameMode('story'); setTypingComplete(false); } }} className="px-8 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg transition-transform hover:scale-105">
+                繼續前進
+              </button>
+            </div>
+          );
+        }
+
+        if (gameMode === 'minigame_memory') {
+          const padColors = ['bg-rose-400', 'bg-blue-400', 'bg-emerald-400', 'bg-amber-400'];
+          return (
+            <div className="flex flex-col h-full justify-center animate-fadeIn text-center">
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold text-slate-700 mb-2">🐾 貓步記憶：安全石階 🐾</h2>
+                <p className="text-slate-600 mb-2">
+                  {memoryState === 'showing' ? '👀 仔細看！記住安全的亮起順序！' : '🐾 換你了！照著順序踩踏石階！'}
+                </p>
+                <div className="flex justify-center gap-2 text-sm text-slate-500 font-bold">
+                  進度：{playerSequence.length} / 4
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto">
+                {[0, 1, 2, 3].map(i => (
+                  <button
+                    key={i}
+                    disabled={memoryState === 'showing'}
+                    onClick={() => handleMemoryClick(i)}
+                    className={`h-24 rounded-2xl flex items-center justify-center text-4xl shadow-md transition-all duration-200 border-b-4 ${padColors[i]} border-black/20 ${activePad === i ? 'brightness-125 scale-105 opacity-100' : 'opacity-80 hover:opacity-100'} ${memoryState === 'playing' ? 'active:scale-95' : 'cursor-not-allowed'}`}
+                  >
+                    {activePad === i ? '🐾' : '🪨'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        if (gameMode === 'minigame_yarn') {
+          return (
+            <div className="flex flex-col h-full animate-fadeIn text-center relative overflow-hidden">
+              <div className="mb-4">
+                <h2 className="text-2xl font-bold text-rose-600 mb-2">🧶 瘋狂毛線球 🧶</h2>
+                <p className="text-slate-600 mb-2">釋放你的野性！在時間結束前瘋狂點擊抓散它！</p>
+                <div className="flex justify-center gap-6 font-bold text-lg">
+                  <span className="text-rose-500">連擊: {yarnClicks} / 25</span>
+                  <span className="text-slate-700">倒數: {yarnTimeLeft} 秒</span>
+                </div>
+              </div>
+              <div className="flex-grow flex items-center justify-center">
+                <button
+                  onClick={handleYarnClick}
+                  className="text-9xl transition-transform duration-75 select-none touch-manipulation"
+                  style={{ transform: `rotate(${yarnTransform.rotate}deg) scale(${yarnTransform.scale})` }}
+                >
+                  🧶
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        if (gameMode === 'minigame_mice') {
+          return (
+            <div className="flex flex-col h-full animate-fadeIn">
+              <div className="text-center mb-4">
+                <h2 className="text-xl font-bold text-slate-700 mb-2">🐾 街頭挑戰：抓捕老鼠 🐾</h2>
+                <div className="flex justify-center gap-6 font-bold text-slate-600">
+                  <span className="text-amber-600">得分: {miceScore} / 3</span><span className="text-red-500">時間: {miceTimeLeft}秒</span>
+                </div>
+              </div>
+              <div className="relative flex-grow bg-slate-200/50 rounded-2xl overflow-hidden border-2 border-slate-300 shadow-inner">
+                {micePositions.map(mouse => mouse.active && (
+                  <button key={mouse.id} onClick={() => catchMouse(mouse.id)} className="absolute text-3xl transform -translate-x-1/2 -translate-y-1/2 hover:scale-110 active:scale-90 transition-transform" style={{ left: `${mouse.x}%`, top: `${mouse.y}%` }}>🐁</button>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        if (gameMode === 'minigame_trash') {
+          return (
+            <div className="flex flex-col h-full justify-between animate-fadeIn text-center">
+              <div>
+                <h2 className="text-xl md:text-2xl font-bold text-slate-700 mb-2">🗑️ 漆黑死巷：翻找垃圾桶 🗑️</h2>
+                <p className="text-slate-600 text-sm mb-4">翻開廢棄紙箱尋找【3個香腸】吧！小心【1個捕鼠夾】！</p>
+                <p className="text-base font-bold text-emerald-600 mb-4">找到食物: {scavengeScore} / 3</p>
+              </div>
+              <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto my-auto w-full">
+                {trashGrid.map((item) => (
+                  <button key={item.id} onClick={() => handleTrashClick(item.id)} className={`h-24 rounded-xl flex items-center justify-center text-4xl shadow transition-all duration-300 border-2 ${item.isOpened ? 'bg-slate-200 cursor-default' : 'bg-slate-700 text-white hover:bg-slate-600 active:scale-95'}`}>
+                    {item.isOpened ? (item.type === 'food' ? '🌭' : item.type === 'trap' ? '🪤' : '💨') : '📦'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        if (gameMode === 'minigame_fish') {
+          return (
+            <div className="flex flex-col h-full justify-between animate-fadeIn text-center p-2">
+              <div>
+                <h2 className="text-xl md:text-2xl font-bold text-amber-600 mb-2">🐟 深夜偷魚乾 🐟</h2>
+                <p className="text-slate-600 text-sm mb-4">指針移動到黃金【完美魚乾區】時按下出爪！</p>
+                <div className="flex justify-between px-6 font-bold text-sm mb-6"><span className="text-emerald-600">成功: {fishScore} / {fishTarget}</span><span className="text-red-500">機會: {fishAttempts}</span></div>
+              </div>
+              <div className="my-auto w-full max-w-md mx-auto">
+                <div className="w-full h-10 bg-slate-200 rounded-full relative overflow-hidden border-2 border-slate-300 shadow-inner">
+                  <div className="absolute top-0 bottom-0 left-[40%] right-[40%] bg-gradient-to-r from-amber-400 to-orange-400 flex items-center justify-center text-[10px] text-white font-black">完美</div>
+                  <div className="absolute top-0 bottom-0 w-3 bg-slate-800 rounded-full shadow-lg transition-all duration-75" style={{ left: `${pointerPos}%`, transform: 'translateX(-50%)' }} />
+                </div>
+              </div>
+              <div className="mt-8 pb-4">
+                <button onClick={handleFishTap} className="w-full max-w-sm mx-auto py-4 bg-orange-500 active:bg-orange-700 text-white font-bold text-xl rounded-2xl shadow-[0_6px_0_#c2410c] active:shadow-[0_0px_0_#c2410c] active:translate-y-[6px] transition-all">🐾 出爪！</button>
+              </div>
+            </div>
+          );
+        }
+
+        const chapter = chapters[currentNode];
+        return (
+          <div className="flex flex-col h-full animate-fadeIn">
+            <div className="text-center mb-6">
+              <span className="text-6xl block mb-2">{chapter.image}</span>
+              <h2 className="text-2xl font-bold text-slate-800">{chapter.title}</h2>
+            </div>
+            {chapter.dialogue && (
+              <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-xl mb-6 shadow-sm relative">
+                <span className="absolute -top-3 left-4 bg-amber-400 text-white text-xs px-2 py-1 rounded-full font-bold">{chapter.dialogue.speaker}</span>
+                <p className="text-slate-700 italic pt-2 font-medium">"<TypewriterText text={chapter.dialogue.text} speed={30} onComplete={() => {}} />"</p>
+              </div>
+            )}
+            <div className="bg-white/60 p-5 rounded-2xl border border-white mb-6 shadow-sm flex-grow overflow-y-auto custom-scrollbar text-slate-600 leading-relaxed text-justify">
+              <TypewriterText text={chapter.story} speed={25} onComplete={() => setTypingComplete(true)} />
+            </div>
+            <div className="flex flex-col gap-3 mt-auto">
+              {typingComplete ? (
+                chapter.choices.map((choice, index) => (
+                  <button key={index} onClick={() => handleChoice(choice)} className="w-full text-left p-4 rounded-xl bg-white border-2 border-slate-200 hover:border-amber-400 hover:bg-amber-50 transition-all duration-200 shadow-sm hover:shadow group flex justify-between items-center">
+                    <span className="text-slate-700 font-medium group-hover:text-amber-800">{choice.text}</span>
+                    <span className="text-amber-400 group-hover:translate-x-1 transition-transform">➔</span>
+                  </button>
+                ))
+              ) : (
+                <div className="text-center p-3 text-xs text-slate-400 bg-white/40 rounded-xl border border-dashed border-slate-200">請先閱讀完上方的劇情與對白</div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      return (
+        <div className={`w-full bg-slate-100/90 backdrop-blur-md h-[90vh] md:h-[750px] rounded-3xl shadow-2xl overflow-hidden flex flex-col relative border-4 border-white transition-all duration-300 ${shaking ? 'animate-shake' : ''}`}>
+          {/* 加入背景音樂播放器（使用上傳的雙副檔名檔名 霧橋回聲.mp3.mp3） */}
+          <audio ref={audioRef} src="霧橋回聲.mp3.mp3" loop />
+          
+          <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+          {flashEffect === 'damage' && <div className="absolute inset-0 bg-red-600/30 pointer-events-none z-50 transition-opacity duration-300" />}
+          {flashEffect === 'heal' && <div className="absolute inset-0 bg-amber-400/30 pointer-events-none z-50 transition-opacity duration-300 animate-pulseGold" />}
+          
+          <div className="relative z-10 bg-slate-800 text-white p-4 flex justify-between items-center shadow-md">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🐱</span>
+              <span className="font-bold tracking-wider">貓的冒險</span>
+              {/* 音樂開關按鈕 */}
+              <button 
+                onClick={toggleAudio} 
+                className="ml-2 text-lg hover:scale-110 active:scale-95 transition-transform bg-slate-700/50 rounded-full w-8 h-8 flex items-center justify-center" 
+                title="切換背景音樂"
+              >
+                {isPlaying ? '🔊' : '🔇'}
+              </button>
+            </div>
+            <div className="flex items-center gap-1 bg-slate-700 px-3 py-1.5 rounded-full border border-slate-600">
+              {Array.from({ length: maxLives }).map((_, i) => (
+                <span key={i} className={`text-lg transition-all duration-300 ${i < lives ? 'text-red-500 scale-100' : 'text-slate-500 scale-75 opacity-50'}`}>{i < lives ? '❤️' : '🖤'}</span>
+              ))}
+            </div>
+          </div>
+          <div className="relative z-10 flex-grow p-6 md:p-8 overflow-hidden flex flex-col">
+            {renderContent()}
+          </div>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
